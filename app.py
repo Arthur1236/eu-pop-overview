@@ -5,6 +5,7 @@ import geopandas as gpd
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_folium import st_folium
+from math import log2 as log
 
 ## INSPO: https://github.com/zakariachowdhury/streamlit-map-dashboard/blob/main/streamlit_app.py | https://zakariachowdhury-streamlit-map-dashboard-streamlit-app-jofuyj.streamlit.app/
 # df = pd.read_csv("CSV/NEWNUTS1POP.csv")
@@ -38,6 +39,7 @@ def to_million(column):
     return vz
 
 st.header('Map of Country', divider='violet')
+st.write(log(df["population"]))
 
 def display_map():
     # ______________________________________________________MAP_____________________________________________
@@ -47,6 +49,8 @@ def display_map():
         geo_data=geofile,
         data=df[df["year"] == selected_year],
         columns=('country_code', 'population'),
+        fill_color ='BrBG',
+        # bins=[],
         key_on='feature.properties.NUTS_ID',
         line_opacity=0.8,
         highlight=True

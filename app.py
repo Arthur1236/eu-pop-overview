@@ -1,93 +1,80 @@
 import streamlit as st
 import pandas as pd
 import folium
-import geopandas as gpd
-import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_folium import st_folium
-from math import log2 as log
 
+
+st.set_page_config(layout="wide")
 ## INSPO: https://github.com/zakariachowdhury/streamlit-map-dashboard/blob/main/streamlit_app.py | https://zakariachowdhury-streamlit-map-dashboard-streamlit-app-jofuyj.streamlit.app/
-# df = pd.read_csv("CSV/NEWNUTS1POP.csv")
 df = pd.read_csv("CSV/demo_pjangroup.csv")
 geofile = "EUNUTS_ZERO.geojson"
 
-# state_list = list(df['geo'].unique())
-# state_list.sort()
-# state_index = state_list.index(land) if land and land in state_list else 0
-# st.write(state_list)
-
-with st.sidebar:
-    selected_year = st.selectbox("Welches Jahr soll ausgewählt werden?",
-                sorted(df['year'].unique()))
-
-    # land = st.selectbox("Welches Land soll ausgewählt werden?",
-    #                       sorted(df['geo'].unique()))
-
-# st.title("Statistical Atlas for: " + land)
-
-def display_country(df, land):
-     state_list = sorted(df['geo'].unique())
-     state_index = state_list.index(land) if land and land in state_list else 0
-     return st.sidebar.selectbox('Welches Land soll ausgewählt werden?', state_list, state_index)
+def year_selector(df):
+    year = st.sidebar.select_slider("Slide to select a year", sorted(df['year'].unique()))
+    return year
+    # return st.sidebar.select_slider("Welches Jahr soll ausgewählt werden?", sorted(df['year'].unique()))
 
 
-#___________________FUNCTIONS__________________________
+def display_country(df, nation):
+     nations = sorted(df['geo'].unique())
+     nation_index = nations.index(nation) if nation and nation in nations else 0
+     return st.sidebar.selectbox('Choose a state', nations, nation_index)
 
-def to_million(column):
-    vz = (column.astype(float)/1000000).round(2).astype(str)[0]+ ' M'
-    return vz
 
-st.header('Map of Country', divider='violet')
-st.write(log(df["population"]))
-
-def display_map():
+def display_map(year):
     # ______________________________________________________MAP_____________________________________________
-    map = folium.Map(location=(51, 7), zoom_start=4, scrollWheelZoom=False, tiles='CartoDB positron')
+    map = folium.Map(location=(53, 9), zoom_start=4, scrollWheelZoom=False, tiles='CartoDB positron')
 
     choropleth = folium.Choropleth(
         geo_data=geofile,
-        data=df[df["year"] == selected_year],
+        data=df[(df["age"] == "TOTAL") & (df["sex"] == "T") & (df["year"] == year)],
         columns=('country_code', 'population'),
-        fill_color ='BrBG',
-        # bins=[],
+        fill_color ='BuPu',
         key_on='feature.properties.NUTS_ID',
+        fill_opacity=1,
         line_opacity=0.8,
-        highlight=True
+        highlight=True,
     )
     choropleth.geojson.add_to(map)
 
-    df_indexed = df[(df["age"] == "TOTAL") & (df["sex"] == "T") & (df["year"] == selected_year)].reset_index(drop=True)
+
+    df_indexed = df[(df["age"] == "TOTAL") & (df["sex"] == "T") & (df["year"] == year)].reset_index(drop=True)
     df_indexed = df_indexed.set_index('country_code')
     for feature in choropleth.geojson.data['features']:
-        land = feature['properties']['NUTS_ID']
-        feature['properties']['en_name'] = (df_indexed.loc[land, 'geo']) if land in list(df_indexed.index) else ''
-        feature['properties']['population'] = 'Population: ' + '{:,}'.format(df_indexed.loc[land, 'population']) if land in list(df_indexed.index) else ''
+        nation = feature['properties']['NUTS_ID']
+        feature['properties']['en_name'] = (df_indexed.loc[nation, 'geo']) if nation in list(df_indexed.index) else ''
+        feature['properties']['population'] = 'Population: ' + '{:,}'.format(df_indexed.loc[nation, 'population']) if nation in list(df_indexed.index) else ''
 
 
     choropleth.geojson.add_child(
         folium.features.GeoJsonTooltip(['en_name', 'population'], labels=False)
     )
-    st_map = st_folium(map, width=700, height=450)
+    st_map = st_folium(map, width="100%", height=600)
 
 
-    land = ''
+    nation = ''
     if st_map['last_active_drawing']:
-        land = st_map['last_active_drawing']['properties']['en_name']
-    return land
+        nation = st_map['last_active_drawing']['properties']['en_name']
+    return nation
+
+
+
+
+
 
 #-https://medium.com/@enigma.pythonml/how-to-create-sankey-diagrams-from-data-frames-in-python-plotly-and-kaggles-titanic-data-1f7d56b28096---------
-def display_sankey(df, selected_year, land):
-    filtered_df = df[df["year"] == selected_year]
-    filtered_df = filtered_df.query('geo == @land & sex != "T" & age != "Y_GE80" & age != "Y_GE75"').reset_index(drop=True)
+def display_sankey(df, year, nation):
+    filtered_df = df[df["year"] == year]
+    filtered_df = filtered_df.query('geo == @nation & sex != "T" & age != "Y_GE80" & age != "Y_GE75"').reset_index(drop=True)
 
-    # Bevölkerungsgruppe zu Gender
+    # Population Group to Gender
     df1 = filtered_df[filtered_df["age"] != "TOTAL"]
     df1 = df1.groupby(['age', 'sex'])['population'].max().reset_index()
     df1.columns = ['source', 'target', 'value']
     df1['target'] =df1['target'].map({'F':'Female', 'M': 'Male'})
 
-    # Gender zu Gesamtbevölkerung
+    # Gender to total population
     df2 = filtered_df.groupby(['sex', 'geo'])['population'].max().reset_index()
     df2 = df2[df2["sex"] != "T"]
     df2.columns = ['source', 'target', 'value']
@@ -114,44 +101,53 @@ def display_sankey(df, selected_year, land):
                 target = links_dict["target"],
                 value = links_dict["value"],))])
 
-    fig.update_layout(title_text="Population based on Age Group and Gender",font_size=10,width=1000, height=600)
+    fig.update_layout(title_text="Population based on Age Group and Gender",font_size=10, height=600)
 
     st.plotly_chart(fig, theme="streamlit", use_container_width=True)
 
 
-# _______________________________________________________DATA__________________________________
-
-
-def display_metric(df, selected_year, land):
+def display_metric(df, year, nation):
     # Population
-    pop1 = df.query('geo == @land & sex == "T" & year == @selected_year & age == "TOTAL"').reset_index(drop=True)
-    pop2 = df.query('geo == @land & sex == "T" & year == @selected_year-1 & age == "TOTAL"').reset_index(drop=True)
+    pop1 = df.query('geo == @nation & sex == "T" & year == @year & age == "TOTAL"').reset_index(drop=True)
+    pop2 = df.query('geo == @nation & sex == "T" & year == @year-1 & age == "TOTAL"').reset_index(drop=True)
     true_pop=str(f'{pop1["population"][0]:,}')
     # Population
-    fem_pop1 = df.query('geo == @land & sex == "F" & year == @selected_year & age == "TOTAL"').reset_index(drop=True)
-    fem_pop2 = df.query('geo == @land & sex == "F" & year == @selected_year-1 & age == "TOTAL"').reset_index(drop=True)
+    fem_pop1 = df.query('geo == @nation & sex == "F" & year == @year & age == "TOTAL"').reset_index(drop=True)
+    fem_pop2 = df.query('geo == @nation & sex == "F" & year == @year-1 & age == "TOTAL"').reset_index(drop=True)
 
     # Male Population
-    male_pop1 = df.query('geo == @land & sex == "M" & year == @selected_year & age == "TOTAL"').reset_index(drop=True)
-    male_pop2 = df.query('geo == @land & sex == "M" & year == @selected_year-1 & age == "TOTAL"').reset_index(drop=True)
+    male_pop1 = df.query('geo == @nation & sex == "M" & year == @year & age == "TOTAL"').reset_index(drop=True)
+    male_pop2 = df.query('geo == @nation & sex == "M" & year == @year-1 & age == "TOTAL"').reset_index(drop=True)
 
-    col1, col2, col3= st.columns(3)
-    if selected_year == 2014:
-        col1.metric("Einwohner", to_million(pop1["population"]), help=true_pop)
-        col2.metric("Einwohner F", to_million(fem_pop1["population"]))
-        col3.metric("Einwohner M", to_million(male_pop1["population"])) 
+    col4, col5, col6= st.columns(3)
+    if year == 2014:
+        col4.metric("Total Population", to_million(pop1["population"]), help=true_pop)
+        col5.metric("Female Population", to_million(fem_pop1["population"]))
+        col6.metric("Male Population", to_million(male_pop1["population"])) 
     else:
-        col1.metric("Einwohner", to_million(pop1["population"]), to_million(pop1["population"] - pop2["population"]) + " (" + str(selected_year-1) + ")", help=true_pop) 
-        col2.metric("Einwohner F", to_million(fem_pop1["population"]), to_million(fem_pop1["population"] - fem_pop2["population"]) + " (" + str(selected_year-1) + ")") 
-        col3.metric("Einwohner M", to_million(male_pop1["population"]), to_million(male_pop1["population"] - male_pop2["population"]) + " (" + str(selected_year-1) + ")")
+        col4.metric("Total Population", to_million(pop1["population"]), to_million(pop1["population"] - pop2["population"]) + " (" + str(year-1) + ")", help=true_pop) 
+        col5.metric("Female Population", to_million(fem_pop1["population"]), to_million(fem_pop1["population"] - fem_pop2["population"]) + " (" + str(year-1) + ")") 
+        col6.metric("Male Population", to_million(male_pop1["population"]), to_million(male_pop1["population"] - male_pop2["population"]) + " (" + str(year-1) + ")")
+
+
+#___________________FUNCTIONS__________________________
+
+def to_million(column):
+    vz = (column.astype(float)/1000000).round(2).astype(str)[0]+ ' M'
+    return vz
 
 def main():
-    land = display_map()
-    land = display_country(df, land)
-    display_metric(df, selected_year, land)
-    display_sankey(df, selected_year, land)
+    st.title("Europe Population Overview")
+    year = year_selector(df)
+    col1, col2 = st.columns(2)
+    with col1:
+        nation = display_map(year)
+    nation = display_country(df, nation)
+    with col2:
+        display_sankey(df, year, nation)
+    display_metric(df, year, nation)
     
-
+    
 
 if __name__ == "__main__":
     main()
